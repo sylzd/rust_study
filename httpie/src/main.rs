@@ -103,6 +103,7 @@ fn print_body(m: Option<Mime>, body: &str) {
         }
 
         // 其它 mime type，我们就直接输出
+        // 在match中使用_，表示剩余所有情况
         _ => println!("{}", body),
     }
 }
