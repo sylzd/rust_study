@@ -17,6 +17,9 @@ study proj.
  limitations under the License.
 -->
 
+# 0. 来源
+https://github.com/tyrchen/geektime-rust/blob/master
+
 # 1. scrape_url
 抓取url，并下载为md格式
 
@@ -29,4 +32,11 @@ cd scrape_url && cargo build --quiet && target/debug/scrape_url
 
 ```
 cd httpie && cargo build --quiet && target/debug/httpie post https://httpbin.org/post a=1 b=2
+```
+
+# 3. tumbor
+图片转换服务器：调整大小、剪切、加水印等
+
+```
+
 ```
