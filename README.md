@@ -28,6 +28,7 @@ cd scrape_url && cargo build --quiet && target/debug/scrape_url
 ```
 
 # 2. httpie
+cli工具
 给url发送get或post请求
 
 ```
@@ -35,6 +36,7 @@ cd httpie && cargo build --quiet && target/debug/httpie post https://httpbin.org
 ```
 
 # 3. tumbor
+后端server
 图片转换服务器：调整大小、剪切、加水印等
 
 ```

@@ -25,8 +25,11 @@ struct Params {
 }
 
 // 3. 获取源图，并缓存：
-// Test: 
-// Output:
+// Test: 在浏览器中输入打印出的 test url: http://localhost:3000/image/CgoKCAj0AxCgBiADCgY6BAgUEBQKBDICCAM/https%3A%2F%2Fencrypted%2Dtbn0%2Egstatic%2Ecom%2Fimages%3Fq%3Dtbn%3AANd9GcTQMG9VPeSdaGocXfIjFa0PxGgtc8DznVkt1bje56E%26s
+// Output: 1. 显示图片 2. 第一次从网络获取图片，后面从缓存获取
+// Sep 18 17:52:19.632  INFO retrieve_image{url="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTQMG9VPeSdaGocXfIjFa0PxGgtc8DznVkt1bje56E&s"}: tumbor: Retrieve url
+// Sep 18 17:52:28.421  INFO retrieve_image{url="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTQMG9VPeSdaGocXfIjFa0PxGgtc8DznVkt1bje56E&s"}: tumbor: Match cache 6062661540816763442
+// Sep 18 17:52:34.298  INFO retrieve_image{url="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTQMG9VPeSdaGocXfIjFa0PxGgtc8DznVkt1bje56E&s"}: tumbor: Match cache 6062661540816763442
 use bytes::Bytes;
 use lru::LruCache;
 use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
@@ -38,8 +41,20 @@ use std::{
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tracing::{info, instrument};
+// 注意anyhow中的Result和系统自带的是不一样的，封装了一层
+use anyhow::Result;
 
 type Cache = Arc<Mutex<LruCache<u64, Bytes>>>;
+
+// 4. 增加图片处理功能，并将其封装为engine，以后可以替换为其他图片处理库
+// 步骤：1. 增加engine mode: 添加engine trait定义及实现  2. 引入mod，如下三行代码 3. 修改generate函数，使用engine处理图片 4.  RUST_LOG=info cargo run --quiet
+// Test: 调整图片质量级别（1~100）后浏览器输入：http://localhost:3000/image/CgoKCAj0AxCgBiADCgY6BAgUEBQKBDICCAM/https%3A%2F%2Fimg2.jiemian.com%2F101%2Foriginal%2F20170426%2F149321790767763800_a640x364.jpg
+// Output: 图片会被打上rust logo水印
+// Output2: 图片压缩模糊化显示，尺寸会变小(Quality:100->10 size:  153758 -> 14356)
+mod engine;
+use engine::{Engine, Photon};
+use image::ImageOutputFormat;
+
 
 #[tokio::main]
 async fn main() {
@@ -49,10 +64,17 @@ async fn main() {
     // 构建路由
     let app = Router::new()
         // `GET /image` 会执行 generate 函数，并把 spec 和 url 传递过去
-        .route("/image/:spec/:url", get(generate));
+        .route("/image/:spec/:url", get(generate))
+        .layer(
+            ServiceBuilder::new()
+                .layer(AddExtensionLayer::new(cache))
+                .into_inner(),
+        );
 
     // 运行 web 服务器
     let addr = "127.0.0.1:3000".parse().unwrap();
+
+    print_test_url("https://img2.jiemian.com/101/original/20170426/149321790767763800_a640x364.jpg");
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
@@ -70,11 +92,21 @@ async fn generate(
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     let url: &str = &percent_decode_str(&url).decode_utf8_lossy();
     let data = retrieve_image(url, cache).await.map_err(|_| StatusCode::BAD_REQUEST)?;
-    // TODO: 处理图片
 
+    // TODO: 此处增加图片处理逻辑
+    // 使用 image engine 处理
+    let mut engine: Photon = data
+    .try_into()
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    engine.apply(&spec.specs);
+
+    let image = engine.generate(ImageOutputFormat::Jpeg(100));
+
+    info!("Finished processing: image size {}", image.len());
     let mut headers = HeaderMap::new();
+
     headers.insert("content-type", HeaderValue::from_static("image/jpeg"));
-    Ok((headers, data.to_vec()))
+    Ok((headers, image))
 }
 
 #[instrument(level = "info", skip(cache))]
